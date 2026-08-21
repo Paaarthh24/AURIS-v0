@@ -1,0 +1,133 @@
+seed: 42
+deterministic: true
+task: det
+
+model:
+  name: auris_v0
+  input_size: 640
+  in_channels: 3
+  build_unused_heads: false
+  backbone:
+    type: convnext_lite
+    channels: [32, 64, 128, 256]
+    depths: [2, 2, 4, 2]
+    kernel_size: 7
+    expansion_ratio: 4
+    drop_path_rate: 0.0
+    layer_scale_init: 1.0e-6
+    stem_kernel: 4
+    stem_stride: 4
+    attention:
+      enabled: false
+      type: identity
+      reduction: 4
+  fpn:
+    type: lightweight
+    in_channels: [32, 64, 128, 256]
+    out_channels: 96
+    levels: [p2, p3, p4, p5]
+  detection:
+    enabled: true
+    num_classes: 1
+    in_channels: 96
+    num_convs: 2
+    strides: [4, 8, 16, 32]
+    regress_ranges: [[0, 64], [64, 128], [128, 256], [256, 100000]]
+    center_sampling_radius: 1.5
+    conf_thresh: 0.3
+    nms_iou: 0.5
+    max_det: 100
+  segmentation:
+    enabled: false
+    num_classes: 1
+    in_channels: 96
+    upsample_mode: bilinear
+  depth_estimation:
+    enabled: false
+  distillation:
+    enabled: false
+    type: null
+    teacher_checkpoint: null
+    feature_weight: 1.0
+    output_weight: 1.0
+  domain_adaptation:
+    enabled: false
+    type: null
+    discriminator_channels: 64
+    lambda_adv: 0.1
+
+data:
+  root: data/synthetic
+  image_dirname: images
+  label_dirname: labels
+  mask_dirname: masks
+  train_list: train.txt
+  val_list: val.txt
+  num_workers: 0
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  augment:
+    hflip: true
+    vflip: false
+    color_jitter: 0.1
+  underwater_enhancement:
+    enabled: false
+    type: null
+  synthetic:
+    enabled: true
+    train_size: 8
+    val_size: 4
+    min_cracks: 1
+    max_cracks: 3
+
+train:
+  epochs: 1
+  batch_size: 2
+  amp: true
+  clip_grad_norm: 1.0
+  log_interval: 1
+  val_interval: 1
+  output_dir: runs/auris_v0_det
+  resume: null
+  optimizer:
+    type: adamw
+    lr: 1.0e-3
+    weight_decay: 0.05
+    betas: [0.9, 0.999]
+  scheduler:
+    type: cosine
+    warmup_epochs: 0
+    warmup_steps: 2
+    min_lr: 1.0e-6
+  checkpoint:
+    save_last: true
+    save_best: true
+    monitor: val/score
+    mode: max
+
+loss:
+  detection:
+    bce_cls_weight: 1.0
+    bce_obj_weight: 1.0
+    ciou_weight: 1.0
+    pos_weight: 1.0
+  segmentation:
+    bce_weight: 1.0
+    dice_weight: 1.0
+    smooth: 1.0
+  task_weights:
+    det: 1.0
+    seg: 1.0
+
+eval:
+  conf_thresh: 0.3
+  nms_iou: 0.5
+  iou_thresh: 0.5
+  vis_interval: 1
+  max_vis: 4
+
+profile:
+  batch_size: 1
+  warmup: 5
+  iters: 10
+  device: cpu
