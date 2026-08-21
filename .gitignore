@@ -18,5 +18,3 @@ checkpoints/
 .DS_Store
 data/raw/
 data/processed/
-reports/*.json
-!reports/.gitkeep

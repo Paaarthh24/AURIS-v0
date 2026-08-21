@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 import yaml
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
@@ -85,7 +85,7 @@ def train_one_epoch(
             {"boxes": t["boxes"].to(device), "labels": t["labels"].to(device)} for t in batch["targets"]
         ]
         optimizer.zero_grad(set_to_none=True)
-        with autocast(enabled=amp):
+        with autocast(device_type=device.type, enabled=amp):
             outputs = model(images, validate=False)
             losses = criterion(outputs, batch, task=task)
             loss = losses["loss"]
@@ -175,7 +175,7 @@ def fit(cfg, model: AURIS | None = None, max_epochs: int | None = None, device: 
     criterion = MultiTaskLoss(cfg)
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg, max(len(train_loader), 1))
-    scaler = GradScaler(enabled=_amp_enabled(cfg, device_obj))
+    scaler = GradScaler(device_obj.type, enabled=_amp_enabled(cfg, device_obj))
     out_dir = Path(cfg.train.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.yaml").write_text(yaml.safe_dump(cfg.to_dict(), sort_keys=False), encoding="utf-8")

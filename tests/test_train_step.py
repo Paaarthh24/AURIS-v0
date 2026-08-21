@@ -5,7 +5,7 @@ from auris.engine import build_optimizer, build_scheduler, train_one_epoch
 from auris.factory import build_model
 from auris.losses import MultiTaskLoss
 from auris.utils.config import load_config
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from torch.utils.data import DataLoader
 import torch
 
@@ -33,7 +33,7 @@ def test_one_train_step_joint():
     criterion = MultiTaskLoss(cfg)
     opt = build_optimizer(model, cfg)
     sch = build_scheduler(opt, cfg, steps_per_epoch=2)
-    scaler = GradScaler(enabled=False)
+    scaler = GradScaler("cpu", enabled=False)
     logs = train_one_epoch(
         model, loader, criterion, opt, sch, scaler, torch.device("cpu"), cfg, epoch=1
     )

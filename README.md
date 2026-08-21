@@ -43,8 +43,13 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 python scripts/verify.py --config configs/auris_v0.yaml
 ```
 
-Writes `reports/auris_v0_profile.txt` and `.json`. Do not start a full
-training run until this report looks correct.
+Writes `reports/auris_v0_profile.txt` and `.json`. Measured joint model at `1×3×640×640` (CPU):
+
+- **2,056,171** parameters (backbone 1,899,872; FPN 87,552; det head 21,130; seg head 47,617)
+- **4.233 GMACs** / **8.467 GFLOPs** (counting 2 FLOPs per MAC on conv+linear)
+- Shape contracts for C2–C5, P2–P5, det maps, and 640×640 seg logits all pass for det / seg / joint
+
+Do not start a full training run until this report looks correct.
 
 ## Training (after verification)
 
