@@ -1,0 +1,137 @@
+{
+  "params": {
+    "backbone": 1899872,
+    "fpn": 87552,
+    "detection_head": 21130,
+    "segmentation_head": 47617,
+    "other": 0,
+    "total": 2056171,
+    "trainable": 2056171
+  },
+  "macs": {
+    "conv_macs": 2136256000.0,
+    "linear_macs": 2097152000.0,
+    "macs": 4233408000.0,
+    "flops": 8466816000.0,
+    "gmacs": 4.233408,
+    "gflops": 8.466816
+  },
+  "latency": {
+    "latency_ms": 42.86290221999707,
+    "fps": 23.33019810155236,
+    "warmup": 10.0,
+    "iters": 50.0,
+    "device": "cpu"
+  },
+  "tasks": {
+    "det": {
+      "task": "det",
+      "loss": 2.445291519165039,
+      "loss_keys": [
+        "det",
+        "det_ciou",
+        "det_cls",
+        "det_obj",
+        "loss"
+      ],
+      "grad_ok": true,
+      "params": {
+        "backbone": 1899872,
+        "fpn": 87552,
+        "detection_head": 21130,
+        "segmentation_head": 0,
+        "other": 0,
+        "total": 2008554,
+        "trainable": 2008554
+      }
+    },
+    "seg": {
+      "task": "seg",
+      "loss": 1.690483570098877,
+      "loss_keys": [
+        "loss",
+        "seg",
+        "seg_bce",
+        "seg_dice"
+      ],
+      "grad_ok": true,
+      "params": {
+        "backbone": 1899872,
+        "fpn": 87552,
+        "detection_head": 0,
+        "segmentation_head": 47617,
+        "other": 0,
+        "total": 2035041,
+        "trainable": 2035041
+      }
+    },
+    "joint": {
+      "task": "joint",
+      "loss": 4.155524730682373,
+      "loss_keys": [
+        "det",
+        "det_ciou",
+        "det_cls",
+        "det_obj",
+        "loss",
+        "seg",
+        "seg_bce",
+        "seg_dice"
+      ],
+      "grad_ok": true,
+      "params": {
+        "backbone": 1899872,
+        "fpn": 87552,
+        "detection_head": 21130,
+        "segmentation_head": 47617,
+        "other": 0,
+        "total": 2056171,
+        "trainable": 2056171
+      }
+    }
+  },
+  "shapes": [
+    "--- task=det ---",
+    "OK  features.c2: (2, 32, 160, 160)",
+    "OK  features.c3: (2, 64, 80, 80)",
+    "OK  features.c4: (2, 128, 40, 40)",
+    "OK  features.c5: (2, 256, 20, 20)",
+    "OK  fpn.p2: (2, 96, 160, 160)",
+    "OK  fpn.p3: (2, 96, 80, 80)",
+    "OK  fpn.p4: (2, 96, 40, 40)",
+    "OK  fpn.p5: (2, 96, 20, 20)",
+    "OK  detection[p2] cls=(2, 1, 160, 160) reg=(2, 4, 160, 160) obj=(2, 1, 160, 160)",
+    "OK  detection[p3] cls=(2, 1, 80, 80) reg=(2, 4, 80, 80) obj=(2, 1, 80, 80)",
+    "OK  detection[p4] cls=(2, 1, 40, 40) reg=(2, 4, 40, 40) obj=(2, 1, 40, 40)",
+    "OK  detection[p5] cls=(2, 1, 20, 20) reg=(2, 4, 20, 20) obj=(2, 1, 20, 20)",
+    "OK  segmentation: disabled",
+    "OK  one-step loss=2.445292 grad_ok=True",
+    "--- task=seg ---",
+    "OK  features.c2: (2, 32, 160, 160)",
+    "OK  features.c3: (2, 64, 80, 80)",
+    "OK  features.c4: (2, 128, 40, 40)",
+    "OK  features.c5: (2, 256, 20, 20)",
+    "OK  fpn.p2: (2, 96, 160, 160)",
+    "OK  fpn.p3: (2, 96, 80, 80)",
+    "OK  fpn.p4: (2, 96, 40, 40)",
+    "OK  fpn.p5: (2, 96, 20, 20)",
+    "OK  detection: disabled",
+    "OK  segmentation.logits: (2, 1, 640, 640)",
+    "OK  one-step loss=1.690484 grad_ok=True",
+    "--- task=joint ---",
+    "OK  features.c2: (2, 32, 160, 160)",
+    "OK  features.c3: (2, 64, 80, 80)",
+    "OK  features.c4: (2, 128, 40, 40)",
+    "OK  features.c5: (2, 256, 20, 20)",
+    "OK  fpn.p2: (2, 96, 160, 160)",
+    "OK  fpn.p3: (2, 96, 80, 80)",
+    "OK  fpn.p4: (2, 96, 40, 40)",
+    "OK  fpn.p5: (2, 96, 20, 20)",
+    "OK  detection[p2] cls=(2, 1, 160, 160) reg=(2, 4, 160, 160) obj=(2, 1, 160, 160)",
+    "OK  detection[p3] cls=(2, 1, 80, 80) reg=(2, 4, 80, 80) obj=(2, 1, 80, 80)",
+    "OK  detection[p4] cls=(2, 1, 40, 40) reg=(2, 4, 40, 40) obj=(2, 1, 40, 40)",
+    "OK  detection[p5] cls=(2, 1, 20, 20) reg=(2, 4, 20, 20) obj=(2, 1, 20, 20)",
+    "OK  segmentation.logits: (2, 1, 640, 640)",
+    "OK  one-step loss=4.155525 grad_ok=True"
+  ]
+}
