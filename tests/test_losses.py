@@ -1,6 +1,7 @@
 import torch
 
 from auris.losses import MultiTaskLoss, box_ciou, dice_loss
+from auris.metrics import pr_curve
 from auris.utils.config import load_config
 from pathlib import Path
 
@@ -12,6 +13,11 @@ CONFIG = Path(__file__).resolve().parents[1] / "configs/auris_v0.yaml"
 def test_ciou_identical_boxes():
     box = torch.tensor([[10.0, 10.0, 40.0, 50.0]])
     assert torch.isclose(box_ciou(box, box), torch.tensor([1.0]), atol=1e-5)
+
+
+def test_pr_curve_perfect():
+    curve = pr_curve([0.95, 0.8], [True, True], n_gt=2)
+    assert curve["ap"] > 0.99
 
 
 def test_dice_perfect():

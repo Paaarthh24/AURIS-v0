@@ -165,7 +165,7 @@ def build_dataloader(cfg: CfgNode, split: str) -> DataLoader:
         num_workers=int(cfg.data.num_workers),
         collate_fn=collate_cracks,
         drop_last=False,
-        pin_memory=False,
+        pin_memory=torch.cuda.is_available(),
     )
 
 

@@ -51,12 +51,24 @@ Writes `reports/auris_v0_profile.txt` and `.json`. Measured joint model at `1×3
 
 Do not start a full training run until this report looks correct.
 
-## Training (after verification)
+## Local CUDA training (Detection/Images + Labels)
+
+On the RTX 5070 laptop, from `auris-v0`:
 
 ```bash
-python scripts/train.py --config configs/train_det.yaml --task det
-python scripts/train.py --config configs/train_seg.yaml --task seg
-python scripts/train.py --config configs/auris_v0.yaml --task joint
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+python scripts/train_local.py
+```
+
+Reads:
+
+- `/home/parth/Desktop/AURIS/auris-v0/Dataset/Detection/Images`
+- `/home/parth/Desktop/AURIS/auris-v0/Dataset/Detection/Labels`
+
+Writes `/home/parth/Desktop/AURIS/Results/` (`plots/`, `detections/val`, `detections/test`, `best.pt`).
+
+```bash
+python scripts/train_local.py --epochs 80 --batch-size 8 --device cuda
 ```
 
 ## Dataset

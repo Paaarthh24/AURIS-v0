@@ -212,6 +212,21 @@ def index_detection_segmentation(
                 "mask": str(mask) if mask else "",
             }
         )
+    return _ensure_splits(splits)
+
+
+def _ensure_splits(splits: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    """Keep held-out val/test when the folder has no train/val/test subdirs."""
+    pool = splits["train"]
+    if not splits["val"] and len(pool) >= 5:
+        n = max(1, len(pool) // 10)
+        splits["val"] = pool[-n:]
+        splits["train"] = pool[:-n]
+        pool = splits["train"]
+    if not splits["test"] and len(pool) >= 5:
+        n = max(1, len(pool) // 10)
+        splits["test"] = pool[-n:]
+        splits["train"] = pool[:-n]
     return splits
 
 

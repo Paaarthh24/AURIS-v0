@@ -95,6 +95,21 @@ def test_detection_segmentation_folder(tmp_path):
     assert n == 2
 
 
+def test_capital_images_labels_folder(tmp_path):
+    img = tmp_path / "Detection" / "Images"
+    lab = tmp_path / "Detection" / "Labels"
+    img.mkdir(parents=True)
+    lab.mkdir(parents=True)
+    for i in range(12):
+        Image.new("RGB", (32, 32), (8, 30, 60)).save(img / f"im{i:02d}.jpg")
+        lab.joinpath(f"im{i:02d}.txt").write_text("0 0.5 0.5 0.3 0.3\n")
+    splits = index_detection_segmentation(tmp_path, seed=0)
+    total = sum(len(v) for v in splits.values())
+    assert total == 12
+    assert len(splits["train"]) >= 1
+    assert len(splits["val"]) >= 1
+
+
 def test_rasterize_bbox_label():
     from pathlib import Path as P
     import tempfile
