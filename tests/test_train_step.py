@@ -15,6 +15,8 @@ CONFIG = Path(__file__).resolve().parents[1] / "configs/auris_v0.yaml"
 def test_synthetic_dataset_shapes():
     cfg = load_config(CONFIG)
     cfg.data.num_workers = 0
+    cfg.data.root = "/tmp/auris-missing-dataset"
+    cfg.data.synthetic.enabled = True
     ds = CrackDataset(cfg, split="train")
     item = ds[0]
     assert item["image"].shape == (3, 640, 640)
@@ -26,6 +28,8 @@ def test_one_train_step_joint():
     cfg = load_config(CONFIG)
     cfg.task = "joint"
     cfg.data.synthetic.train_size = 4
+    cfg.data.root = "/tmp/auris-missing-dataset"
+    cfg.data.synthetic.enabled = True
     cfg.train.batch_size = 2
     cfg.data.num_workers = 0
     model = build_model(cfg)

@@ -1,0 +1,10 @@
+name: auris_uwcrack
+nc: 1
+names: [crack]
+size: 640
+train: train.txt
+val: val.txt
+test: test.txt
+images: images
+labels: labels
+masks: masks

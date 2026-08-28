@@ -51,24 +51,78 @@ Writes `reports/auris_v0_profile.txt` and `.json`. Measured joint model at `1×3
 
 Do not start a full training run until this report looks correct.
 
-## Training (after verification)
+## Local CUDA training (Detection/Images + Labels)
+
+On the RTX 5070 laptop, from `auris-v0`:
 
 ```bash
-python scripts/train.py --config configs/train_det.yaml --task det
-python scripts/train.py --config configs/train_seg.yaml --task seg
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+python scripts/train_local.py
+```
+
+Reads:
+
+- `/home/parth/Desktop/AURIS/auris-v0/Dataset/Detection/Images`
+- `/home/parth/Desktop/AURIS/auris-v0/Dataset/Detection/Labels`
+
+Writes `/home/parth/Desktop/AURIS/Results/` (`plots/`, `detections/val`, `detections/test`, `best.pt`).
+
+```bash
+python scripts/train_local.py --epochs 80 --batch-size 8 --device cuda
+```
+
+## Dataset
+
+Default training root is your local folder:
+
+`/home/parth/Desktop/AURIS/auris-v0/Dataset`
+
+AURIS looks for **Detection** and **Segmentation** subfolders (any similar name), joins samples by filename, and uses YOLO `.txt` or VOC `.xml` boxes plus PNG masks. If that path is missing, it falls back to `./Dataset` then `data/auris_uwcrack`.
+
+```bash
+python scripts/prepare_dataset.py inspect --src /home/parth/Desktop/AURIS/auris-v0/Dataset
 python scripts/train.py --config configs/auris_v0.yaml --task joint
+python scripts/eval.py --config configs/auris_v0.yaml --split test
 ```
 
-Synthetic underwater-like cracks are generated when no real split lists
-exist. Real data layout:
+Override with `AURIS_DATA_ROOT=/path/to/Dataset`.
+
+Create or enlarge the bundled demo set:
+
+```bash
+python scripts/prepare_dataset.py generate --out data/auris_uwcrack --train 48 --val 16 --test 16
+```
+
+Import your own YOLO detection or YOLO-seg tree (polygons become masks):
+
+```bash
+python scripts/prepare_dataset.py import-yolo --src path/to/yolo --out data/custom
+```
+
+Optional public road/wall crack set (Ultralytics crack-seg, ~92MB) for extra experiments:
+
+```bash
+python scripts/prepare_dataset.py download-crack-seg --out data/crack_seg
+```
+
+Then point `data.root` in the YAML at that folder (`synthetic.enabled` is only a fallback when split lists are missing).
+
+Held-out test:
+
+```bash
+python scripts/eval.py --config configs/auris_v0.yaml --split test --checkpoint runs/auris_v0/best.pt
+```
+
+Layout:
 
 ```
-data/root/
-  images/*.png
+data/auris_uwcrack/
+  images/*.jpg
   labels/*.txt    # YOLO: class xc yc w h (normalized)
   masks/*.png     # binary
   train.txt
   val.txt
+  test.txt
 ```
 
 ## Adding later modules

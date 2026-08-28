@@ -15,9 +15,10 @@ from tqdm import tqdm
 
 from auris.data import build_dataloader
 from auris.losses import MultiTaskLoss
-from auris.metrics import MetricMeter
+from auris.metrics import MetricMeter, pr_curve, ranked_matches
 from auris.models.auris import AURIS
 from auris.utils.checkpoint import load_checkpoint, save_checkpoint
+from auris.utils.plots import plot_history, plot_pr_bundle
 from auris.utils.viz import draw_prediction
 
 
@@ -113,6 +114,8 @@ def validate(
     cfg,
     epoch: int,
     vis_dir: Path | None,
+    prefix: str = "val",
+    plots_dir: Path | None = None,
 ) -> dict[str, float]:
     model.eval()
     meter = MetricMeter()
@@ -120,7 +123,13 @@ def validate(
     n = 0
     vis_count = 0
     max_vis = int(cfg.eval.max_vis)
-    for batch in tqdm(loader, desc=f"val {epoch}", leave=False):
+    unlimited = max_vis < 0
+    pr_scores: list[float] = []
+    pr_tps: list[bool] = []
+    n_gt = 0
+    dump_records: list[dict[str, Any]] = []
+    dump_json = vis_dir / "predictions.json" if vis_dir is not None and bool(cfg.eval.get("save_detections", False)) else None
+    for batch in tqdm(loader, desc=f"{prefix} {epoch}", leave=False):
         images = batch["images"].to(device)
         masks = batch["masks"].to(device)
         targets = [
@@ -134,34 +143,73 @@ def validate(
             running[key] = running.get(key, 0.0) + float(value.detach().cpu())
         results = model.predict(
             images,
-            conf_thresh=float(cfg.eval.conf_thresh),
+            conf_thresh=float(cfg.eval.get("pr_conf", cfg.eval.conf_thresh)),
             nms_iou=float(cfg.eval.nms_iou),
         )
+        op_thresh = float(cfg.eval.conf_thresh)
         for i, result in enumerate(results):
+            keep = result["scores"] >= op_thresh if result["scores"].numel() else result["scores"].new_zeros((0,), dtype=torch.bool)
+            shown = {
+                "boxes": result["boxes"][keep] if result["boxes"].numel() else result["boxes"],
+                "scores": result["scores"][keep] if result["scores"].numel() else result["scores"],
+            }
+            if "mask" in result:
+                shown["mask"] = result["mask"]
             if model.det_enabled:
                 meter.update_det(
+                    shown["boxes"],
+                    shown["scores"],
+                    targets[i]["boxes"],
+                    float(cfg.eval.iou_thresh),
+                )
+                scores, tps, ngt = ranked_matches(
                     result["boxes"],
                     result["scores"],
                     targets[i]["boxes"],
                     float(cfg.eval.iou_thresh),
                 )
+                pr_scores.extend(scores)
+                pr_tps.extend(tps)
+                n_gt += ngt
             if model.seg_enabled:
                 meter.update_seg(result["mask"], masks[i, 0])
-            if vis_dir is not None and vis_count < max_vis and epoch % int(cfg.eval.vis_interval) == 0:
+            should_vis = vis_dir is not None and (unlimited or vis_count < max_vis)
+            if should_vis and (unlimited or epoch % int(cfg.eval.vis_interval) == 0):
                 draw_prediction(
                     images[i],
-                    result,
+                    shown,
                     list(cfg.data.mean),
                     list(cfg.data.std),
                     vis_dir / f"ep{epoch:03d}_{batch['ids'][i]}.png",
                     gt_boxes=targets[i]["boxes"],
-                    gt_mask=masks[i, 0],
+                    gt_mask=masks[i, 0] if model.seg_enabled else None,
                 )
                 vis_count += 1
-    logs = {f"val/{k}": v / max(n, 1) for k, v in running.items()}
+            if dump_json is not None:
+                dump_records.append(
+                    {
+                        "id": batch["ids"][i],
+                        "pred_boxes": shown["boxes"].detach().cpu().tolist(),
+                        "scores": shown["scores"].detach().cpu().tolist(),
+                        "pred_boxes_raw": result["boxes"].detach().cpu().tolist(),
+                        "scores_raw": result["scores"].detach().cpu().tolist(),
+                        "gt_boxes": targets[i]["boxes"].detach().cpu().tolist(),
+                    }
+                )
+    logs = {f"{prefix}/{k}": v / max(n, 1) for k, v in running.items()}
     metrics = meter.compute()
-    logs.update({f"val/{k}" if not k.startswith("val/") else k: v for k, v in metrics.items()})
-    logs["val/score"] = metrics["score"]
+    logs.update({f"{prefix}/{k}": v for k, v in metrics.items()})
+    logs[f"{prefix}/score"] = metrics["score"]
+    if model.det_enabled:
+        curve = pr_curve(pr_scores, pr_tps, n_gt)
+        logs[f"{prefix}/det/ap"] = float(curve["ap"])
+        if vis_dir is not None:
+            vis_dir.mkdir(parents=True, exist_ok=True)
+            plot_pr_bundle(curve, Path(plots_dir) if plots_dir is not None else vis_dir.parent / "plots", prefix=prefix)
+            (vis_dir / "pr_curve.json").write_text(json.dumps(curve), encoding="utf-8")
+    if dump_json is not None:
+        vis_dir.mkdir(parents=True, exist_ok=True)
+        dump_json.write_text(json.dumps(dump_records, indent=2), encoding="utf-8")
     return logs
 
 
@@ -197,7 +245,14 @@ def fit(cfg, model: AURIS | None = None, max_epochs: int | None = None, device: 
             model, train_loader, criterion, optimizer, scheduler, scaler, device_obj, cfg, epoch
         )
         val_logs = validate(
-            model, val_loader, criterion, device_obj, cfg, epoch, vis_dir=out_dir / "vis"
+            model,
+            val_loader,
+            criterion,
+            device_obj,
+            cfg,
+            epoch,
+            vis_dir=out_dir / "vis",
+            plots_dir=out_dir / "plots",
         )
         logs = {**train_logs, **val_logs, "epoch": epoch, "lr": optimizer.param_groups[0]["lr"]}
         history.append(logs)
@@ -217,5 +272,40 @@ def fit(cfg, model: AURIS | None = None, max_epochs: int | None = None, device: 
             best = score
             ckpt["best"] = best
             save_checkpoint(ckpt, out_dir / "best.pt")
+        plot_history(history, out_dir / "plots")
     (out_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
-    return {"history": history, "best": best, "output_dir": str(out_dir)}
+    plot_history(history, out_dir / "plots")
+    return {"history": history, "best": best, "output_dir": str(out_dir), "model": model, "device": str(device_obj)}
+
+
+@torch.no_grad()
+def export_detections(
+    model: AURIS,
+    loader,
+    criterion: MultiTaskLoss,
+    device: torch.device,
+    cfg,
+    out_dir: str | Path,
+    split: str,
+) -> dict[str, float]:
+    """Write overlays, predictions.json, PR/F1 plots, and metrics for one split."""
+    out_dir = Path(out_dir)
+    det_dir = out_dir / "detections" / split
+    saved_max = cfg.eval.max_vis
+    cfg.eval.max_vis = -1
+    cfg.eval.save_detections = True
+    logs = validate(
+        model,
+        loader,
+        criterion,
+        device,
+        cfg,
+        epoch=0,
+        vis_dir=det_dir,
+        prefix=split,
+        plots_dir=out_dir / "plots",
+    )
+    cfg.eval.max_vis = saved_max
+    det_dir.mkdir(parents=True, exist_ok=True)
+    (det_dir / "metrics.json").write_text(json.dumps(logs, indent=2), encoding="utf-8")
+    return logs

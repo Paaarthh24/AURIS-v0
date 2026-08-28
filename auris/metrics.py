@@ -21,6 +21,71 @@ def box_iou(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return inter / (area_a[:, None] + area_b[None, :] - inter + 1e-7)
 
 
+def ranked_matches(
+    pred_boxes: torch.Tensor,
+    pred_scores: torch.Tensor,
+    gt_boxes: torch.Tensor,
+    iou_thresh: float,
+) -> tuple[list[float], list[bool], int]:
+    """Score-sorted TP/FP flags for a PR curve. Returns scores, is_tp, n_gt."""
+    n_gt = int(gt_boxes.shape[0])
+    if pred_boxes.numel() == 0:
+        return [], [], n_gt
+    order = pred_scores.argsort(descending=True)
+    pred_boxes = pred_boxes[order]
+    pred_scores = pred_scores[order]
+    tps: list[bool] = []
+    if n_gt:
+        matched = torch.zeros(n_gt, dtype=torch.bool, device=gt_boxes.device)
+        ious = box_iou(pred_boxes, gt_boxes)
+        for i in range(pred_boxes.shape[0]):
+            iou_i, j = ious[i].max(dim=0)
+            hit = bool(iou_i >= iou_thresh and not matched[j])
+            if hit:
+                matched[j] = True
+            tps.append(hit)
+    else:
+        tps = [False] * pred_boxes.shape[0]
+    return pred_scores.detach().cpu().tolist(), tps, n_gt
+
+
+def pr_curve(scores: list[float], tps: list[bool], n_gt: int) -> dict[str, list[float] | float]:
+    if not scores or n_gt <= 0:
+        return {
+            "precision": [1.0],
+            "recall": [0.0],
+            "f1": [0.0],
+            "thresholds": [1.0],
+            "ap": 0.0,
+        }
+    import numpy as np
+
+    scores_a = np.asarray(scores, dtype=np.float64)
+    tps_a = np.asarray(tps, dtype=bool)
+    order = np.argsort(-scores_a)
+    tps_a = tps_a[order]
+    scores_a = scores_a[order]
+    cum_tp = np.cumsum(tps_a)
+    cum_fp = np.cumsum(~tps_a)
+    recall = cum_tp / float(n_gt)
+    precision = cum_tp / np.maximum(cum_tp + cum_fp, 1)
+    f1 = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
+    # VOC-style interpolated AP
+    mrec = np.concatenate(([0.0], recall, [1.0]))
+    mpre = np.concatenate(([1.0], precision, [0.0]))
+    for i in range(mpre.size - 1, 0, -1):
+        mpre[i - 1] = max(mpre[i - 1], mpre[i])
+    idx = np.where(mrec[1:] != mrec[:-1])[0]
+    ap = float(np.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]))
+    return {
+        "precision": precision.tolist(),
+        "recall": recall.tolist(),
+        "f1": f1.tolist(),
+        "thresholds": scores_a.tolist(),
+        "ap": ap,
+    }
+
+
 def match_detections(
     pred_boxes: torch.Tensor,
     pred_scores: torch.Tensor,

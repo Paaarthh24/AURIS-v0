@@ -1,0 +1,21 @@
+{
+  "name": "auris_uwcrack",
+  "description": "Synthetic underwater concrete crack dataset for AURIS v0 (RGB + YOLO boxes + binary masks).",
+  "nc": 1,
+  "names": [
+    "crack"
+  ],
+  "size": 640,
+  "seed": 42,
+  "splits": {
+    "train": 48,
+    "val": 16,
+    "test": 16
+  },
+  "layout": {
+    "images": "images/*.jpg",
+    "labels": "labels/*.txt  # YOLO class xc yc w h (normalized)",
+    "masks": "masks/*.png    # binary 0/255",
+    "lists": "train.txt, val.txt, test.txt"
+  }
+}
