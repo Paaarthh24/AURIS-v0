@@ -59,16 +59,46 @@ python scripts/train.py --config configs/train_seg.yaml --task seg
 python scripts/train.py --config configs/auris_v0.yaml --task joint
 ```
 
-Synthetic underwater-like cracks are generated when no real split lists
-exist. Real data layout:
+## Dataset
+
+AURIS trains and evaluates on **`data/auris_uwcrack`**: RGB images, YOLO boxes, binary masks, and `train.txt` / `val.txt` / `test.txt`.
+
+Create or enlarge it:
+
+```bash
+python scripts/prepare_dataset.py generate --out data/auris_uwcrack --train 48 --val 16 --test 16
+```
+
+Import your own YOLO detection or YOLO-seg tree (polygons become masks):
+
+```bash
+python scripts/prepare_dataset.py import-yolo --src path/to/yolo --out data/custom
+```
+
+Optional public road/wall crack set (Ultralytics crack-seg, ~92MB) for extra experiments:
+
+```bash
+python scripts/prepare_dataset.py download-crack-seg --out data/crack_seg
+```
+
+Then point `data.root` in the YAML at that folder (`synthetic.enabled` is only a fallback when split lists are missing).
+
+Held-out test:
+
+```bash
+python scripts/eval.py --config configs/auris_v0.yaml --split test --checkpoint runs/auris_v0/best.pt
+```
+
+Layout:
 
 ```
-data/root/
-  images/*.png
+data/auris_uwcrack/
+  images/*.jpg
   labels/*.txt    # YOLO: class xc yc w h (normalized)
   masks/*.png     # binary
   train.txt
   val.txt
+  test.txt
 ```
 
 ## Adding later modules

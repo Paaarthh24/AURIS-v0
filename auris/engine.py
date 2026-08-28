@@ -113,6 +113,7 @@ def validate(
     cfg,
     epoch: int,
     vis_dir: Path | None,
+    prefix: str = "val",
 ) -> dict[str, float]:
     model.eval()
     meter = MetricMeter()
@@ -120,7 +121,7 @@ def validate(
     n = 0
     vis_count = 0
     max_vis = int(cfg.eval.max_vis)
-    for batch in tqdm(loader, desc=f"val {epoch}", leave=False):
+    for batch in tqdm(loader, desc=f"{prefix} {epoch}", leave=False):
         images = batch["images"].to(device)
         masks = batch["masks"].to(device)
         targets = [
@@ -158,10 +159,10 @@ def validate(
                     gt_mask=masks[i, 0],
                 )
                 vis_count += 1
-    logs = {f"val/{k}": v / max(n, 1) for k, v in running.items()}
+    logs = {f"{prefix}/{k}": v / max(n, 1) for k, v in running.items()}
     metrics = meter.compute()
-    logs.update({f"val/{k}" if not k.startswith("val/") else k: v for k, v in metrics.items()})
-    logs["val/score"] = metrics["score"]
+    logs.update({f"{prefix}/{k}": v for k, v in metrics.items()})
+    logs[f"{prefix}/score"] = metrics["score"]
     return logs
 
 
