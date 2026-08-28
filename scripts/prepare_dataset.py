@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT))
 
 from auris.datasets.convert import download_crack_seg, import_yolo_dataset
 from auris.datasets.generate import generate_dataset
+from auris.datasets.local import (
+    find_named_dir,
+    DET_DIR_NAMES,
+    SEG_DIR_NAMES,
+    index_detection_segmentation,
+)
 
 
 def main() -> None:
@@ -30,6 +36,15 @@ def main() -> None:
     imp = sub.add_parser("import-yolo", help="Convert a YOLO det/seg tree into AURIS layout")
     imp.add_argument("--src", required=True)
     imp.add_argument("--out", required=True)
+
+    inspect = sub.add_parser(
+        "inspect",
+        help="Discover Detection/Segmentation folders and print split counts (no copy)",
+    )
+    inspect.add_argument(
+        "--src",
+        default="/home/parth/Desktop/AURIS/auris-v0/Dataset",
+    )
 
     dl = sub.add_parser(
         "download-crack-seg",
@@ -54,6 +69,31 @@ def main() -> None:
     if args.cmd == "import-yolo":
         counts = import_yolo_dataset(args.src, args.out)
         print(json.dumps({"out": args.out, "counts": counts}, indent=2))
+        return
+    if args.cmd == "inspect":
+        src = Path(args.src).expanduser()
+        if not src.is_dir():
+            raise SystemExit(
+                f"Dataset folder not found: {src}\n"
+                "On this machine the path is missing. Run inspect/train on the PC "
+                "that has /home/parth/Desktop/AURIS/auris-v0/Dataset, or copy/symlink "
+                "it to ./Dataset"
+            )
+        det = find_named_dir(src, DET_DIR_NAMES)
+        seg = find_named_dir(src, SEG_DIR_NAMES)
+        splits = index_detection_segmentation(src)
+        print(
+            json.dumps(
+                {
+                    "root": str(src),
+                    "detection_dir": str(det) if det else None,
+                    "segmentation_dir": str(seg) if seg else None,
+                    "counts": {k: len(v) for k, v in splits.items()},
+                    "sample": (splits["train"][0] if splits["train"] else None),
+                },
+                indent=2,
+            )
+        )
         return
     if args.cmd == "download-crack-seg":
         extracted = download_crack_seg(args.raw)

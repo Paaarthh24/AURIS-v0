@@ -16,5 +16,6 @@ checkpoints/
 *.pth
 *.ckpt
 .DS_Store
+Dataset/
 data/raw/
 data/processed/

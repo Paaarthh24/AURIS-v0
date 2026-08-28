@@ -61,9 +61,21 @@ python scripts/train.py --config configs/auris_v0.yaml --task joint
 
 ## Dataset
 
-AURIS trains and evaluates on **`data/auris_uwcrack`**: RGB images, YOLO boxes, binary masks, and `train.txt` / `val.txt` / `test.txt`.
+Default training root is your local folder:
 
-Create or enlarge it:
+`/home/parth/Desktop/AURIS/auris-v0/Dataset`
+
+AURIS looks for **Detection** and **Segmentation** subfolders (any similar name), joins samples by filename, and uses YOLO `.txt` or VOC `.xml` boxes plus PNG masks. If that path is missing, it falls back to `./Dataset` then `data/auris_uwcrack`.
+
+```bash
+python scripts/prepare_dataset.py inspect --src /home/parth/Desktop/AURIS/auris-v0/Dataset
+python scripts/train.py --config configs/auris_v0.yaml --task joint
+python scripts/eval.py --config configs/auris_v0.yaml --split test
+```
+
+Override with `AURIS_DATA_ROOT=/path/to/Dataset`.
+
+Create or enlarge the bundled demo set:
 
 ```bash
 python scripts/prepare_dataset.py generate --out data/auris_uwcrack --train 48 --val 16 --test 16

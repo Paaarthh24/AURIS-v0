@@ -33,6 +33,9 @@ def main() -> None:
         raise SystemExit(subprocess.call(cmd))
 
     cfg = load_config(args.config)
+    from auris.data import resolve_data_root
+
+    print(f"AURIS data root: {resolve_data_root(cfg)}")
     if args.task:
         cfg.task = args.task
         if args.task == "det":

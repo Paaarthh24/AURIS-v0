@@ -67,8 +67,11 @@ model:
     lambda_adv: 0.1
 
 data:
-  name: auris_uwcrack
-  root: data/auris_uwcrack
+  name: local_dataset
+  root: /home/parth/Desktop/AURIS/auris-v0/Dataset
+  root_fallbacks:
+    - Dataset
+    - data/auris_uwcrack
   image_dirname: images
   label_dirname: labels
   mask_dirname: masks
@@ -85,8 +88,9 @@ data:
   underwater_enhancement:
     enabled: false
     type: null  # clahe | fusion | learned
+  keep_classes: []  # empty = use every annotated class as crack/damage
   synthetic:
-    enabled: true
+    enabled: false
     train_size: 32
     val_size: 8
     test_size: 8

@@ -3,6 +3,7 @@ from pathlib import Path
 from auris.data import CrackDataset, build_dataloader
 from auris.datasets.convert import import_yolo_dataset, rasterize_yolo_label
 from auris.datasets.generate import generate_dataset
+from auris.datasets.local import index_detection_segmentation
 from auris.utils.config import load_config
 from PIL import Image, ImageDraw
 import numpy as np
@@ -17,6 +18,7 @@ def test_generate_and_load_splits(tmp_path):
     cfg = load_config(CONFIG)
     cfg.data.root = str(tmp_path)
     cfg.data.synthetic.enabled = False
+    cfg.data.root_fallbacks = []
     cfg.model.input_size = 128
     cfg.data.num_workers = 0
     cfg.train.batch_size = 2
@@ -53,6 +55,44 @@ def test_yolo_seg_polygon_import(tmp_path):
     assert mask.max() > 0
     label = (out / "labels" / "train_a.txt").read_text().strip().split()
     assert len(label) == 5
+
+
+def test_detection_segmentation_folder(tmp_path):
+    det_img = tmp_path / "Detection" / "images"
+    det_lab = tmp_path / "Detection" / "labels"
+    seg_img = tmp_path / "Segmentation" / "images"
+    seg_msk = tmp_path / "Segmentation" / "masks"
+    for folder in (det_img, det_lab, seg_img, seg_msk):
+        folder.mkdir(parents=True)
+    Image.new("RGB", (64, 64), (10, 40, 80)).save(det_img / "joint.jpg")
+    det_lab.joinpath("joint.txt").write_text("0 0.5 0.5 0.4 0.2\n")
+    Image.new("RGB", (64, 64), (10, 40, 80)).save(seg_img / "joint.jpg")
+    mask = Image.new("L", (64, 64), 0)
+    for x in range(22, 42):
+        for y in range(28, 36):
+            mask.putpixel((x, y), 255)
+    mask.save(seg_msk / "joint.png")
+    Image.new("RGB", (64, 64), (12, 50, 90)).save(seg_img / "seg_only.jpg")
+    mask.save(seg_msk / "seg_only.png")
+
+    splits = index_detection_segmentation(tmp_path, seed=0)
+    total = sum(len(v) for v in splits.values())
+    assert total == 2
+    cfg = load_config(CONFIG)
+    cfg.data.root = str(tmp_path)
+    cfg.data.synthetic.enabled = False
+    cfg.data.root_fallbacks = []
+    cfg.model.input_size = 64
+    cfg.data.num_workers = 0
+    n = 0
+    for split in ("train", "val", "test"):
+        ds = CrackDataset(cfg, split=split)
+        n += len(ds)
+        if len(ds):
+            sample = ds[0]
+            assert sample["image"].shape == (3, 64, 64)
+            assert sample["mask"].shape[0] == 1
+    assert n == 2
 
 
 def test_rasterize_bbox_label():

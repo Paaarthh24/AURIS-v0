@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,34 @@ from torch.utils.data import DataLoader, Dataset
 from auris.utils.config import CfgNode
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def resolve_data_root(cfg: CfgNode) -> Path:
+    """Use the configured folder when it exists; otherwise honor synthetic/fallbacks."""
+    env = os.environ.get("AURIS_DATA_ROOT")
+    if env:
+        env_path = Path(env).expanduser()
+        if env_path.is_dir():
+            return env_path
+    explicit = Path(str(cfg.data.get("root") or "")).expanduser() if cfg.data.get("root") else None
+    if explicit is not None and explicit.is_dir():
+        return explicit
+
+    synthetic = cfg.data.get("synthetic")
+    synthetic_on = bool(synthetic.get("enabled", False)) if synthetic is not None else False
+    if synthetic_on and explicit is not None:
+        return explicit
+
+    fallbacks = list(cfg.data.get("root_fallbacks") or [])
+    extra = [Path("Dataset"), REPO_ROOT / "Dataset", REPO_ROOT / "data" / "auris_uwcrack"]
+    from auris.datasets.local import looks_like_task_dataset
+
+    for item in list(fallbacks) + extra:
+        path = Path(str(item)).expanduser()
+        if path.is_dir() and looks_like_task_dataset(path):
+            return path
+    return explicit if explicit is not None else extra[-1]
 
 
 def _to_tensor(image: Image.Image) -> torch.Tensor:
@@ -48,17 +77,19 @@ class CrackDataset(Dataset):
         self.mean = torch.tensor(list(cfg.data.mean), dtype=torch.float32).view(3, 1, 1)
         self.std = torch.tensor(list(cfg.data.std), dtype=torch.float32).view(3, 1, 1)
         self.augment = split == "train"
+        self.data_root = resolve_data_root(cfg)
         self.items: list[dict[str, Any]] = []
-        if _use_synthetic(cfg, split):
+        if _use_synthetic(cfg, split, self.data_root):
             self.items = _make_synthetic_index(cfg, split)
             self.synthetic = True
         else:
             self.synthetic = False
-            self.items = _scan_dataset(cfg, split)
-            if not self.items:
+            self.items = _scan_dataset(cfg, split, self.data_root)
+            if not self.items and split == "train":
                 raise FileNotFoundError(
-                    f"No samples for split={split} under {cfg.data.root}. "
-                    "Run: python scripts/prepare_dataset.py generate"
+                    f"No samples for split={split} under {self.data_root}. "
+                    "Expected Detection/ and Segmentation/ folders, YOLO images/labels, "
+                    "or AURIS train.txt lists."
                 )
 
     def __len__(self) -> int:
@@ -138,20 +169,25 @@ def build_dataloader(cfg: CfgNode, split: str) -> DataLoader:
     )
 
 
-def _use_synthetic(cfg: CfgNode, split: str) -> bool:
+def _use_synthetic(cfg: CfgNode, split: str, root: Path) -> bool:
     synthetic = cfg.data.get("synthetic")
     enabled = bool(synthetic.get("enabled", False)) if synthetic is not None else False
     if not enabled:
         return False
-    return not _has_split(cfg, split)
+    return not _has_split(cfg, split, root)
 
 
-def _has_split(cfg: CfgNode, split: str) -> bool:
-    root = Path(cfg.data.root)
+def _has_split(cfg: CfgNode, split: str, root: Path) -> bool:
+    from auris.datasets.local import DET_DIR_NAMES, SEG_DIR_NAMES, find_named_dir, looks_like_task_dataset
+
     list_path = root / split_list_name(cfg, split)
     if list_path.is_file() and list_path.read_text(encoding="utf-8").strip():
         return True
-    return _yolo_image_dir(root, split).is_dir()
+    if _yolo_image_dir(root, split).is_dir():
+        return True
+    if find_named_dir(root, DET_DIR_NAMES) or find_named_dir(root, SEG_DIR_NAMES):
+        return True
+    return looks_like_task_dataset(root)
 
 
 def _yolo_image_dir(root: Path, split: str) -> Path:
@@ -161,11 +197,18 @@ def _yolo_image_dir(root: Path, split: str) -> Path:
     return root / split / "images"
 
 
-def _scan_dataset(cfg: CfgNode, split: str) -> list[dict[str, Any]]:
-    root = Path(cfg.data.root)
+def _scan_dataset(cfg: CfgNode, split: str, root: Path) -> list[dict[str, Any]]:
     list_path = root / split_list_name(cfg, split)
     if list_path.is_file() and list_path.read_text(encoding="utf-8").strip():
         return _scan_list(cfg, root, list_path)
+
+    from auris.datasets.local import DET_DIR_NAMES, SEG_DIR_NAMES, find_named_dir, index_detection_segmentation
+
+    if find_named_dir(root, DET_DIR_NAMES) or find_named_dir(root, SEG_DIR_NAMES):
+        keep = list(cfg.data.get("keep_classes") or [])
+        indexed = index_detection_segmentation(root, keep_classes=keep or None, seed=int(cfg.seed))
+        return indexed.get(split, [])
+
     image_dir = _yolo_image_dir(root, split)
     label_dir = root / "labels" / split
     if not label_dir.is_dir():
@@ -180,9 +223,9 @@ def _scan_dataset(cfg: CfgNode, split: str) -> list[dict[str, Any]]:
         items.append(
             {
                 "id": f"{split}_{image.stem}",
-                "image": image,
-                "label": label_dir / f"{image.stem}.txt",
-                "mask": mask_dir / f"{image.stem}.png",
+                "image": str(image),
+                "label": str(label_dir / f"{image.stem}.txt"),
+                "mask": str(mask_dir / f"{image.stem}.png"),
             }
         )
     return items
@@ -195,6 +238,17 @@ def _scan_list(cfg: CfgNode, root: Path, list_path: Path) -> list[dict[str, Any]
     mask_dirname = str(cfg.data.mask_dirname)
     items = []
     for name in names:
+        if "|" in name:
+            image_s, label_s, mask_s = (name.split("|") + ["", ""])[:3]
+            items.append(
+                {
+                    "id": Path(image_s).stem,
+                    "image": image_s,
+                    "label": label_s,
+                    "mask": mask_s,
+                }
+            )
+            continue
         stem = Path(name).stem
         image = Path(name)
         if not image.is_absolute():
@@ -210,9 +264,9 @@ def _scan_list(cfg: CfgNode, root: Path, list_path: Path) -> list[dict[str, Any]
         items.append(
             {
                 "id": stem,
-                "image": image,
-                "label": root / label_dirname / f"{stem}.txt",
-                "mask": root / mask_dirname / f"{stem}.png",
+                "image": str(image),
+                "label": str(root / label_dirname / f"{stem}.txt"),
+                "mask": str(root / mask_dirname / f"{stem}.png"),
             }
         )
     return items
@@ -255,9 +309,22 @@ def _load_sample(item: dict[str, Any], size: int) -> tuple[torch.Tensor, torch.T
     pil = Image.open(item["image"]).convert("RGB")
     orig_w, orig_h = pil.size
     image = _to_tensor(_resize_rgb(pil, size))
-    boxes, poly_mask = _parse_yolo_label(Path(item["label"]), orig_w, orig_h, size)
+    label_path = Path(str(item.get("label") or ""))
+    boxes = torch.zeros((0, 4), dtype=torch.float32)
+    poly_mask = None
+    if label_path.suffix.lower() == ".xml" and label_path.is_file():
+        from auris.datasets.local import parse_voc_boxes
+
+        voc = parse_voc_boxes(label_path, keep_classes=None)
+        scaled = []
+        for x1, y1, x2, y2 in voc:
+            scaled.append([x1 * size / orig_w, y1 * size / orig_h, x2 * size / orig_w, y2 * size / orig_h])
+        if scaled:
+            boxes = torch.tensor(scaled, dtype=torch.float32)
+    elif label_path.is_file():
+        boxes, poly_mask = _parse_yolo_label(label_path, orig_w, orig_h, size)
     mask = torch.zeros((1, size, size), dtype=torch.float32)
-    mask_path = Path(item["mask"])
+    mask_path = Path(str(item.get("mask") or ""))
     if mask_path.is_file():
         m = _resize_mask(Image.open(mask_path).convert("L"), size)
         mask = (torch.from_numpy(np.asarray(m, dtype=np.float32) / 255.0) > 0.5).float().unsqueeze(0)
